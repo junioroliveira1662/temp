@@ -1,0 +1,76 @@
+const VERTEX_AI_AGENT_ENGINE_URL = "https://us-central1-aiplatform.googleapis.com/v1/projects/i8-n8n-prod/locations/us-central1/reasoningEngines/8348679750633390080:query";
+const PROJECT_NUMBER = "SEU_NUMERO_DO_PROJETO"; // Substitua pelo seu número de projeto do Google Cloud
+
+function doPost(e) {
+  const event = JSON.parse(e.postData.contents);
+  let replyText = "Desculpe, não entendi.";
+
+  if (event.type === "MESSAGE") {
+    const userMessage = event.message.text;
+    replyText = callVertexAIAgentEngine(userMessage);
+  } else if (event.type === "ADDED_TO_SPACE") {
+    replyText = "Olá! Eu sou seu agente de IA. Como posso ajudar?";
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ text: replyText }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function callVertexAIAgentEngine(query) {
+  try {
+    // Obter um token de acesso para a conta de serviço do Apps Script
+    // que está conectada ao seu projeto GCP.
+    const service = getOAuthService();
+    if (!service.has  AccessToken()) {
+        service.requestAccessToken();
+    }
+    const accessToken = service.getAccessToken();
+
+    const payload = {
+      instances: [{ prompt: query }], // Adapte conforme a entrada do seu Agent Engine
+      parameters: {} // Parâmetros adicionais para o seu modelo
+    };
+
+    const options = {
+      method: "post",
+      headers: {
+        "Authorization": "Bearer " + accessToken,
+        "Content-Type": "application/json"
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(VERTEX_AI_AGENT_ENGINE_URL, options);
+    const responseData = JSON.parse(response.getContentText());
+
+    // Adapte a extração da resposta conforme a saída do seu Agent Engine
+    const agentResponse = responseData.predictions && responseData.predictions[0] && responseData.predictions[0].content
+                          ? responseData.predictions[0].content
+                          : "Não consegui uma resposta do agente.";
+    return agentResponse;
+
+  } catch (error) {
+    Logger.log("Erro ao chamar Vertex AI Agent Engine: " + error.message);
+    return "Desculpe, houve um erro ao comunicar com a inteligência artificial.";
+  }
+}
+
+// Função de exemplo para autenticação com OAuth2 Service Account
+// Você precisará configurar as permissões corretas para a conta de serviço
+// que o Apps Script usa para acessar a API do Vertex AI.
+// Para um ambiente de produção, considere usar a biblioteca OAuth2 para Apps Script
+// e configurar credenciais de serviço.
+function getOAuthService() {
+  // Isso é um placeholder. Para uso real, configure o OAuth2 service account.
+  // Você precisará do Client ID e Secret de uma conta de serviço para isso.
+  // Alternativamente, confie nas permissões padrão da conta de serviço do Apps Script
+  // que está ligada ao seu projeto GCP, e certifique-se que essa conta de serviço
+  // tem a role 'Vertex AI User' ou similar.
+  return OAuth2.createService('VertexAI')
+      .setTokenUrl('https://accounts.google.com/o/oauth2/token')
+      .setPrivateKey(PropertiesService.getScriptProperties().getProperty('PRIVATE_KEY'))
+      .setIssuer(PropertiesService.getScriptProperties().getProperty('CLIENT_EMAIL'))
+      .setPropertyStore(PropertiesService.getScriptProperties())
+      .setScope('https://www.googleapis.com/auth/cloud-platform'); // Ou um escopo mais específico como 'https://www.googleapis.com/auth/cloud-platform.aiplatform'
+}
